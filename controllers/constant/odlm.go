@@ -18,10 +18,14 @@ package constant
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"text/template"
 
 	utilyaml "github.com/ghodss/yaml"
+	"github.com/google/go-jsonnet"
+	"k8s.io/klog"
 
 	odlm "github.com/IBM/operand-deployment-lifecycle-manager/api/v1alpha1"
 )
@@ -1160,104 +1164,167 @@ spec:
 )
 
 const (
-	KeyCloakOpCon = `
-apiVersion: operator.ibm.com/v1alpha1
-kind: OperandConfig
-metadata:
-  name: common-service
-  namespace: "{{ .ServicesNs }}"
-  labels:
-    operator.ibm.com/managedByCsOperator: "true"
-  annotations:
-    version: {{ .Version }}
-spec:
-  services:
-  - name: keycloak-operator
-    resources:
-      - apiVersion: operator.ibm.com/v1alpha1
-        data:
-          spec:
-            requests:
-              - operands:
-                  - name: edb-keycloak
-                registry: common-service
-                registryNamespace: {{ .ServicesNs }}
-        force: false
-        kind: OperandRequest
-        name: edb-keycloak-request
-      - apiVersion: route.openshift.io/v1
-        data:
-          port:
-            targetPort: 8443
-          spec:
-            tls:
-              termination: passthrough
-            to:
-              kind: Service
-              name: cs-keycloak-service
-            wildcardPolicy: None
-        force: false
-        kind: Route
-        name: keycloak
-      - apiVersion: operator.ibm.com/v1alpha1
-        data:
-          spec:
-            bindings:
-              public-keycloak-initial-admin:
-                secret: cs-keycloak-initial-admin
-            description: Binding information that should be accessible to Keycloak adopters
-            operand: keycloak-operator
-            registry: common-service
-            registryNamespace: {{ .ServicesNs }}
-        force: false
-        kind: OperandBindInfo
-        name: keycloak-bindinfo
-      - apiVersion: k8s.keycloak.org/v2alpha1
-        data:
-          spec:
-            db:
-              host: keycloak-edb-cluster-rw
-              passwordSecret:
-                key: password
-                name: keycloak-edb-cluster-app
-              usernameSecret:
-                key: username
-                name: keycloak-edb-cluster-app
-              vendor: postgres
-            hostname:
-              strict: false
-            http:
-              tlsSecret: cs-ca-certificate-secret
-            ingress:
-              className: openshift-default
-              enabled: true
-            instances: 1
-        force: false
-        kind: Keycloak
-        name: cs-keycloak
-  - name: edb-keycloak
-    resources:
-      - apiVersion: postgresql.k8s.enterprisedb.io/v1
-        data:
-          spec:
-            bootstrap:
-              initdb:
-                database: keycloak
-                owner: app
-            imageName: >-
-              icr.io/cpopen/edb/postgresql:14.7@sha256:d2e21251c5b0e3a4a45bdef592f9293e258124793b529e622808dc010900b7ea
-            imagePullSecrets:
-              - name: ibm-entitlement-key
-            instances: 1
-            logLevel: info
-            primaryUpdateStrategy: unsupervised
-            storage:
-              size: 1Gi
-            walStorage:
-              size: 1Gi
-        force: false
-        kind: Cluster
-        name: keycloak-edb-cluster
+	KeyCloakOpCon = `{
+  "apiVersion": "operator.ibm.com/v1alpha1",
+  "kind": "OperandConfig",
+  "metadata": {
+    "name": "common-service",
+    "namespace": std.extVar("commonservice").ServicesNs,
+    "labels": {
+      "operator.ibm.com/managedByCsOperator": "true"
+    },
+    "annotations": {
+      "version": std.extVar("commonservice").Version
+    }
+  },
+  "spec": {
+    local servicesconfig = std.extVar("commonservice").ServicesConfig,
+    local config = std.get(servicesconfig, "keycloak-operator"),
+    local spec = if config != null then config.spec,
+    local keycloak = if spec != null then spec.keycloak,
+    local host = if keycloak != null then keycloak.host,
+
+    "services": [
+      {
+        "name": "keycloak-operator",
+        "resources": [
+          {
+            "apiVersion": "operator.ibm.com/v1alpha1",
+            "data": {
+              "spec": {
+                "requests": [
+                  {
+                    "operands": [
+                      {
+                        "name": "edb-keycloak"
+                      }
+                    ],
+                    "registry": "common-service",
+                    "registryNamespace": std.extVar("commonservice").ServicesNs
+                  }
+                ]
+              }
+            },
+            "force": false,
+            "kind": "OperandRequest",
+            "name": "edb-keycloak-request"
+          },
+          {
+            "apiVersion": "route.openshift.io/v1",
+            "data": {
+              "port": {
+                "targetPort": 8443
+              },
+              "spec": {
+                [if host != null then 'host']: host,
+                "tls": {
+                  "termination": "passthrough"
+                },
+                "to": {
+                  "kind": "Service",
+                  "name": "cs-keycloak-service"
+                },
+                "wildcardPolicy": "None"
+              }
+            },
+            "force": false,
+            "kind": "Route",
+            "name": "keycloak"
+          },
+          {
+            "apiVersion": "operator.ibm.com/v1alpha1",
+            "data": {
+              "spec": {
+                "bindings": {
+                  "public-keycloak-initial-admin": {
+                    "secret": "cs-keycloak-initial-admin"
+                  }
+                },
+                "description": "Binding information that should be accessible to Keycloak adopters",
+                "operand": "keycloak-operator",
+                "registry": "common-service",
+                "registryNamespace": std.extVar("commonservice").ServicesNs
+              }
+            },
+            "force": false,
+            "kind": "OperandBindInfo",
+            "name": "keycloak-bindinfo"
+          },
+          {
+            "apiVersion": "k8s.keycloak.org/v2alpha1",
+            "data": {
+              "spec": {
+                "db": {
+                  "host": "keycloak-edb-cluster-rw",
+                  "passwordSecret": {
+                    "key": "password",
+                    "name": "keycloak-edb-cluster-app"
+                  },
+                  "usernameSecret": {
+                    "key": "username",
+                    "name": "keycloak-edb-cluster-app"
+                  },
+                  "vendor": "postgres"
+                },
+                "hostname": {
+                  [if host != null then 'hostname']: host,
+                  "strict": false
+                },
+                "http": {
+                  "tlsSecret": "cs-ca-certificate-secret"
+                },
+                "ingress": {
+                  "className": "openshift-default",
+                  "enabled": true
+                },
+                "instances": 1
+              }
+            },
+            "force": false,
+            "kind": "Keycloak",
+            "name": "cs-keycloak"
+          }
+        ]
+      },
+      {
+        "name": "edb-keycloak",
+        "resources": [
+          {
+            "apiVersion": "postgresql.k8s.enterprisedb.io/v1",
+            "data": {
+              "spec": {
+                "bootstrap": {
+                  "initdb": {
+                    "database": "keycloak",
+                    "owner": "app"
+                  }
+                },
+                "imageName": "icr.io/cpopen/edb/postgresql:14.7@sha256:d2e21251c5b0e3a4a45bdef592f9293e258124793b529e622808dc010900b7ea",
+                "imagePullSecrets": [
+                  {
+                    "name": "ibm-entitlement-key"
+                  }
+                ],
+                "instances": 1,
+                "logLevel": "info",
+                "primaryUpdateStrategy": "unsupervised",
+                "storage": {
+                  "size": "1Gi"
+                },
+                "walStorage": {
+                  "size": "1Gi"
+                }
+              }
+            },
+            "force": false,
+            "kind": "Cluster",
+            "name": "keycloak-edb-cluster"
+          }
+        ]
+      }
+    ]
+  }
+}
 `
 )
 
@@ -1348,11 +1415,31 @@ func ConcatenateConfigs(baseConfigTemplate, insertedConfigTemplate string, data 
 }
 
 func applyTemplate(objectTemplate string, data interface{}) ([]byte, error) {
-	var buffer bytes.Buffer
-	t := template.Must(template.New("newTemplate").Parse(objectTemplate))
-	if err := t.Execute(&buffer, data); err != nil {
-		return nil, err
-	}
+	if strings.HasPrefix(objectTemplate, "{") {
+		vm := jsonnet.MakeVM()
+		commonservice, err := json.Marshal(data)
+		if err != nil {
+			panic("Could not marshal CS data")
+		}
+		klog.Info(string(commonservice))
+		ast, err := jsonnet.SnippetToAST("commonservice", string(commonservice))
+		if err != nil {
+			panic("Could not parse CS data")
+		}
+		vm.ExtNode("commonservice", ast)
 
-	return buffer.Bytes(), nil
+		output, err := vm.EvaluateAnonymousSnippet("x", objectTemplate)
+		if err != nil {
+			panic(err)
+		}
+		return []byte(output), nil
+	} else {
+		var buffer bytes.Buffer
+		t := template.Must(template.New("newTemplate").Parse(objectTemplate))
+		if err := t.Execute(&buffer, data); err != nil {
+			return nil, err
+		}
+
+		return buffer.Bytes(), nil
+	}
 }

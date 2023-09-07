@@ -118,6 +118,10 @@ func (r *CommonServiceReconciler) ReconcileMasterCR(ctx context.Context, instanc
 	r.Bootstrap.CSData.CatalogSourceName = string(instance.Status.ConfigStatus.CatalogName)
 	r.Bootstrap.CSData.CatalogSourceNs = string(instance.Status.ConfigStatus.CatalogNamespace)
 
+	for _, serviceConfig := range instance.Spec.Services {
+		r.Bootstrap.CSData.ServicesConfig[serviceConfig.Name] = serviceConfig
+	}
+
 	var forceUpdateODLMCRs bool
 	if !reflect.DeepEqual(originalInstance.Status, instance.Status) {
 		forceUpdateODLMCRs = true

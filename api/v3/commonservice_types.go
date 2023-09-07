@@ -40,6 +40,7 @@ type CSData struct {
 	OnPremMultiEnable  string
 	ZenOperatorImage   string
 	WatchNamespaces    string
+	ServicesConfig     map[string]ServiceConfig
 }
 
 type ServiceConfig struct {

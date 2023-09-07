@@ -128,6 +128,7 @@ func NewBootstrap(mgr manager.Manager) (bs *Bootstrap, err error) {
 		ZenOperatorImage:  util.GetImage("IBM_ZEN_OPERATOR_IMAGE"),
 		WatchNamespaces:   util.GetWatchNamespace(),
 		OnPremMultiEnable: strconv.FormatBool(util.CheckMultiInstances(mgr.GetAPIReader())),
+		ServicesConfig:    make(map[string]apiv3.ServiceConfig),
 	}
 
 	bs = &Bootstrap{
