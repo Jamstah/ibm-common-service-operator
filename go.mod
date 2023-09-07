@@ -86,3 +86,9 @@ require (
 
 // fix vulnerability: CVE-2021-3121 in github.com/gogo/protobuf < v1.3.2
 replace github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+
+replace github.com/irifrance/gini => github.com/go-air/gini v1.0.1
+
+replace github.com/mikefarah/yaml/v2 => github.com/Jamstah/yaml/v2 v2.4.2
+
+replace vbom.ml/util => github.com/fvbommel/util v0.0.0-20160121211510-db5cfe13f5cc
